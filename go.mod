@@ -4,6 +4,8 @@ go 1.18
 
 replace github.com/uor-framework/uor-client-go => /home/alex/dev/uor-framework/client
 
+replace github.com/uor-framework/ingester => /home/alex/dev/uor-framework/ingester
+
 require (
 	github.com/gabriel-vasile/mimetype v1.4.1
 	github.com/uor-framework/uor-client-go v0.3.0

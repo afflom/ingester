@@ -1,4 +1,4 @@
-package ingest
+package ingester
 
 import (
 	"context"
@@ -15,6 +15,7 @@ import (
 	"github.com/uor-framework/uor-client-go/schema"
 )
 
+// Ingest
 func Ingest(schemaAddress string, workspace string) {
 	// create empty object of type schemaid
 

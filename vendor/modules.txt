@@ -66,3 +66,4 @@ oras.land/oras-go/v2/internal/ioutil
 oras.land/oras-go/v2/internal/resolver
 oras.land/oras-go/v2/internal/status
 # github.com/uor-framework/uor-client-go => /home/alex/dev/uor-framework/client
+# github.com/uor-framework/ingester => /home/alex/dev/uor-framework/ingester

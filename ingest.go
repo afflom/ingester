@@ -71,13 +71,13 @@ func (ingester Ingester) Ingest() error {
 		var mt parser
 		switch mtype.String() {
 		case "application/json":
-			fmt.Printf("File: %s, is %s", path, mtype.String())
+			fmt.Printf("File: %s, is %s\n", path, mtype.String())
 			mt = jsonParser("")
 		case "text/xml":
-			fmt.Printf("File: %s, is %s", path, mtype.String())
+			fmt.Printf("File: %s, is %s\n", path, mtype.String())
 			mt = xmlParser("")
 		default:
-			fmt.Printf("File: %s, is %s", path, mtype.String())
+			fmt.Printf("File: %s, is %s\n", path, mtype.String())
 			mt = unsupported("unsupported")
 		}
 		if mt == unsupported("unsupported") {
@@ -86,20 +86,20 @@ func (ingester Ingester) Ingest() error {
 		fmt.Println("Starting parser")
 		p, err := mt.parse(path)
 		if err != nil {
-			fmt.Printf("Parsing Error: %v", err)
+			fmt.Printf("Parsing Error: %v\n", err)
 		}
 		parsed, err := json.Marshal(p)
 		if err != nil {
 			fmt.Println(err)
 		}
 
-		fmt.Printf("parsed: %v", string(parsed))
+		fmt.Printf("parsed: %v\n", string(parsed))
 
 		for jsonPath, _ := range flatSchema {
-			fmt.Printf("searching content for: %s", jsonPath)
+			fmt.Printf("searching content for: %s\n", jsonPath)
 			jsonPath := strings.TrimSuffix(jsonPath, ".type")
 			value := gjson.Get(string(parsed), jsonPath)
-			fmt.Printf("Match: %s", value.String())
+			fmt.Printf("Match: %s\n", value.String())
 			if value.String() != "" {
 				foundPair := map[string]interface{}{jsonPath: value}
 				out, err := flat.Unflatten(foundPair, nil)
@@ -109,7 +109,7 @@ func (ingester Ingester) Ingest() error {
 				if err := mergo.Merge(&foundAttributes, out); err != nil {
 					fmt.Println(err)
 				}
-				fmt.Printf("foundAttributes: %s", foundAttributes)
+				fmt.Printf("foundAttributes: %s\n", foundAttributes)
 
 			}
 		}

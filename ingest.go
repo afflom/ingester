@@ -21,8 +21,6 @@ import (
 // Ingest
 func (ingester Ingester) Ingest() error {
 
-	foundAttributes := make(map[string]interface{})
-
 	// Create a dataset-config
 	dsc := clientapi.DataSetConfiguration{
 		TypeMeta: clientapi.TypeMeta{
@@ -48,13 +46,21 @@ func (ingester Ingester) Ingest() error {
 		fmt.Println(err)
 	}
 
-	// schemaStructs, err := rts.DoRaw("", string(schema))
-	// if err != nil {
-	//   fmt.Println(err)
-	// }
-	// fmt.Printf("schemastructs: %v", string(schemaStructs))
-	// Add the files, links, and annotations to the dataset-config
+	var files []string
 	err = filepath.Walk(ingester.Workspace, func(path string, info os.FileInfo, err error) error {
+		files = append(files, path)
+		fmt.Println(path)
+
+		return nil
+	})
+	if err != nil {
+		fmt.Println(err)
+	}
+	foundAttributes := make(map[string]interface{})
+
+	for _, path := range files {
+		fmt.Println(path)
+
 		if err != nil {
 			fmt.Println(err)
 		}
@@ -73,16 +79,14 @@ func (ingester Ingester) Ingest() error {
 		case "application/json":
 			fmt.Printf("File: %s, is %s\n", path, mtype.String())
 			mt = jsonParser("")
-		case "text/xml":
+		case "text/xml; charset=utf-8":
 			fmt.Printf("File: %s, is %s\n", path, mtype.String())
 			mt = xmlParser("")
 		default:
-			fmt.Printf("File: %s, is %s\n", path, mtype.String())
+			fmt.Printf("File: %s, is %s. File not parsed\n", path, mtype.String())
 			mt = unsupported("unsupported")
 		}
-		if mt == unsupported("unsupported") {
-			return nil
-		}
+
 		fmt.Println("Starting parser")
 		p, err := mt.parse(path)
 		if err != nil {
@@ -95,12 +99,14 @@ func (ingester Ingester) Ingest() error {
 
 		fmt.Printf("parsed: %v\n", string(parsed))
 
-		for jsonPath, _ := range flatSchema {
-			fmt.Printf("searching content for: %s\n", jsonPath)
+		for jsonPath := range flatSchema {
 			jsonPath := strings.TrimSuffix(jsonPath, ".type")
+			fmt.Printf("searching content for: %s\n", jsonPath)
+
 			value := gjson.Get(string(parsed), jsonPath)
-			fmt.Printf("Match: %s\n", value.String())
 			if value.String() != "" {
+				fmt.Printf("Match: %s\n", value.String())
+
 				foundPair := map[string]interface{}{jsonPath: value}
 				out, err := flat.Unflatten(foundPair, nil)
 				if err != nil {
@@ -111,23 +117,19 @@ func (ingester Ingester) Ingest() error {
 				}
 				fmt.Printf("foundAttributes: %s\n", foundAttributes)
 
+				if value.String() == path {
+
+				}
 			}
 		}
 
-		// Search foundAttributes for filenames within the workspace
-		// If files are found in foundAttributes, get the json object that filename occurs in and
-		// add that object to the corresponding file's attributes in the dataset config
-		// Any attributes remaining in the foundAttributes map are applied to the file that they
-		// were found in.
-
-		return nil
-	})
-	if err != nil {
-		fmt.Println(err)
+		// search attributes for local file references
+		// If a local file reference exists, add the attributes of its object
+		// to the attributes of its file in the dataset config
 	}
 
+	// Print dataset config
 	return nil
-
 }
 
 func fetchJSONSchema(ctx context.Context, schemaAddress string, store content.AttributeStore) ([]byte, error) {

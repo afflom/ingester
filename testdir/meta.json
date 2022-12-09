@@ -1,0 +1,7 @@
+{
+    "properties": {
+      "assignerOrgId": "big-long-number",
+      "cveId": "test-cve",
+      "url": "https://example.com"
+    }
+}

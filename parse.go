@@ -1,8 +1,7 @@
-package ingester
+package main
 
 import (
 	"encoding/json"
-	"io/fs"
 	"io/ioutil"
 	"os"
 
@@ -12,15 +11,16 @@ import (
 // parse.go lists supported formats and provides the parsing logic for each format
 
 type parser interface {
-	parse(fs.FileInfo) (map[string]interface{}, error)
+	parse(string) (map[string]interface{}, error)
 }
 
 type jsonParser string
 type xmlParser string
+type unsupported string
 
-func (dsc jsonParser) parse(filename fs.FileInfo) (map[string]interface{}, error) {
+func (dsc jsonParser) parse(filename string) (map[string]interface{}, error) {
 
-	file, err := os.Open(filename.Name())
+	file, err := os.Open(filename)
 	if err != nil {
 		return nil, err
 	}
@@ -34,9 +34,9 @@ func (dsc jsonParser) parse(filename fs.FileInfo) (map[string]interface{}, error
 
 }
 
-func (dsc xmlParser) parse(filename fs.FileInfo) (map[string]interface{}, error) {
+func (dsc xmlParser) parse(filename string) (map[string]interface{}, error) {
 
-	file, err := os.Open(filename.Name())
+	file, err := os.Open(filename)
 	if err != nil {
 		return nil, err
 	}
@@ -45,4 +45,10 @@ func (dsc xmlParser) parse(filename fs.FileInfo) (map[string]interface{}, error)
 
 	result, err := xml.NewMapXml(b)
 	return result, err
+}
+
+func (dsc unsupported) parse(filename string) (result map[string]interface{}, err error) {
+
+	return result, err
+
 }

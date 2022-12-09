@@ -1,35 +1,64 @@
-package ingester
+package main
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"io/ioutil"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/gabriel-vasile/mimetype"
-	"github.com/uor-framework/uor-client-go/api/client/v1alpha1"
-
+	"github.com/imdario/mergo"
+	"github.com/nqd/flat"
+	"github.com/tidwall/gjson"
+	clientapi "github.com/uor-framework/uor-client-go/api/client/v1alpha1"
 	"github.com/uor-framework/uor-client-go/content"
 	"github.com/uor-framework/uor-client-go/content/layout"
-	"github.com/uor-framework/uor-client-go/schema"
 )
 
 // Ingest
-func Ingest(schemaAddress string, workspace string) {
-	// create empty object of type schemaid
+func (ingester Ingester) Ingest() error {
 
-	attributes := make(map[string]interface{})
+	foundAttributes := make(map[string]interface{})
 
 	// Create a dataset-config
-	dsc := v1alpha1.DataSetConfiguration{}
+	dsc := clientapi.DataSetConfiguration{
+		TypeMeta: clientapi.TypeMeta{
+			Kind:       clientapi.DataSetConfigurationKind,
+			APIVersion: clientapi.GroupVersion,
+		},
+	}
+
+	store, err := layout.New(ingester.CacheDir)
+	if err != nil {
+		fmt.Println(err)
+	}
+	schemaMap := make(map[string]interface{})
+	schema, err := fetchJSONSchema(context.Background(), ingester.Schema, store)
+	if err != nil {
+		fmt.Println(err)
+	}
+	json.Unmarshal(schema, &schemaMap)
+	json.Marshal(schemaMap)
+
+	flatSchema, err := flat.Flatten(schemaMap, nil)
+	if err != nil {
+		fmt.Println(err)
+	}
+
+	// schemaStructs, err := rts.DoRaw("", string(schema))
+	// if err != nil {
+	//   fmt.Println(err)
+	// }
+	// fmt.Printf("schemastructs: %v", string(schemaStructs))
 	// Add the files, links, and annotations to the dataset-config
-	err := filepath.Walk(workspace, func(path string, info os.FileInfo, err error) error {
+	err = filepath.Walk(ingester.Workspace, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
 			fmt.Println(err)
-			return err
 		}
-		file := v1alpha1.File{
+		file := clientapi.File{
 			File: path,
 		}
 		dsc.Collection.Files = append(dsc.Collection.Files, file)
@@ -37,35 +66,59 @@ func Ingest(schemaAddress string, workspace string) {
 		mtype, err := mimetype.DetectFile(path)
 		if err != nil {
 			fmt.Println(err)
-			return err
 		}
 
 		var mt parser
 		switch mtype.String() {
 		case "application/json":
+			fmt.Printf("File: %s, is %s", path, mtype.String())
 			mt = jsonParser("")
 		case "text/xml":
+			fmt.Printf("File: %s, is %s", path, mtype.String())
 			mt = xmlParser("")
+		default:
+			fmt.Printf("File: %s, is %s", path, mtype.String())
+			mt = unsupported("unsupported")
 		}
-		parsed, err := mt.parse(info)
+		if mt == unsupported("unsupported") {
+			return nil
+		}
+		fmt.Println("Starting parser")
+		p, err := mt.parse(path)
+		if err != nil {
+			fmt.Printf("Parsing Error: %v", err)
+		}
+		parsed, err := json.Marshal(p)
 		if err != nil {
 			fmt.Println(err)
 		}
 
-		// for each attribute in the schema, search the parsed file for that attribute key.
-		store, err := layout.New("./content-store")
-		if err != nil {
-			fmt.Println(err)
+		fmt.Printf("parsed: %v", string(parsed))
+
+		for jsonPath, _ := range flatSchema {
+			fmt.Printf("searching content for: %s", jsonPath)
+			jsonPath := strings.TrimSuffix(jsonPath, ".type")
+			value := gjson.Get(string(parsed), jsonPath)
+			fmt.Printf("Match: %s", value.String())
+			if value.String() != "" {
+				foundPair := map[string]interface{}{jsonPath: value}
+				out, err := flat.Unflatten(foundPair, nil)
+				if err != nil {
+					fmt.Println(err)
+				}
+				if err := mergo.Merge(&foundAttributes, out); err != nil {
+					fmt.Println(err)
+				}
+				fmt.Printf("foundAttributes: %s", foundAttributes)
+
+			}
 		}
 
-		schema, _, err := fetchJSONSchema(context.Background(), schemaAddress, store)
-		for k, v := range schema {
-
-		}
-		// if the attribute exists in the file, add it to the object of type schemaid
-		// When done, search object of type schemaid for each filename in the workspace
-		// if a filename from the workspace is found,
-		// write the object that it occurs within to the attributes of the file in the dataset-config
+		// Search foundAttributes for filenames within the workspace
+		// If files are found in foundAttributes, get the json object that filename occurs in and
+		// add that object to the corresponding file's attributes in the dataset config
+		// Any attributes remaining in the foundAttributes map are applied to the file that they
+		// were found in.
 
 		return nil
 	})
@@ -73,39 +126,24 @@ func Ingest(schemaAddress string, workspace string) {
 		fmt.Println(err)
 	}
 
-	// Add attributes to each file in the dataset config
+	return nil
 
 }
 
-func fetchJSONSchema(ctx context.Context, schemaAddress string, store content.AttributeStore) (schema.Schema, string, error) {
+func fetchJSONSchema(ctx context.Context, schemaAddress string, store content.AttributeStore) ([]byte, error) {
 	desc, err := store.AttributeSchema(ctx, schemaAddress)
 	if err != nil {
-		return schema.Schema{}, "", err
-	}
-
-	var schemaID string
-	node, err := v2.NewNode(desc.Digest.String(), desc)
-	if err != nil {
-		return schema.Schema{}, "", err
-	}
-	props := node.Properties
-	if props.IsASchema() {
-		schemaID = props.Schema.ID
+		return nil, err
 	}
 
 	schemaReader, err := store.Fetch(ctx, desc)
 	if err != nil {
-		return schema.Schema{}, "", fmt.Errorf("error fetching schema from store: %w", err)
+		return nil, fmt.Errorf("error fetching schema from store: %w", err)
 	}
 	schemaBytes, err := ioutil.ReadAll(schemaReader)
 	if err != nil {
-		return schema.Schema{}, "", err
-	}
-	loader, err := schema.FromBytes(schemaBytes)
-	if err != nil {
-		return schema.Schema{}, "", err
+		return nil, err
 	}
 
-	sc, err := schema.New(loader)
-	return sc, schemaID, err
+	return schemaBytes, err
 }
